@@ -1,5 +1,7 @@
 Projeto: Chatbot Inteligente com IA
 
+Link:  https://talkative-bot-studio.lovable.app
+
 Desenvolvi  um chatbot com inteligência artificial utilizando a plataforma Lovable, com foco em performance, segurança e experiência do usuário. O sistema integra frontend moderno, backend robusto e armazenamento confiável de dados, proporcionando interações rápidas e precisas.
 
     *Tecnologias utilizadas 
