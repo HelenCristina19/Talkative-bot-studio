@@ -1,9 +1,10 @@
 import { useState, useRef } from "react";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
-import { Send, Image, Mic } from "lucide-react";
+import { Send, Image, Mic, Square } from "lucide-react";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
+import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 
 const messageSchema = z.object({
   message: z.string().trim().max(5000, "Mensagem muito longa (máximo 5000 caracteres)"),
@@ -21,9 +22,11 @@ interface ChatInputProps {
 const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
   const [message, setMessage] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { isRecording, startRecording, stopRecording, error: recordError } = useAudioRecorder();
 
   const validateFile = (file: File, allowedTypes: string[]): boolean => {
     if (file.size > MAX_FILE_SIZE) {
@@ -98,6 +101,60 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
     }
   };
 
+  const handleMicClick = async () => {
+    if (isRecording) {
+      setIsTranscribing(true);
+      const audioBlob = await stopRecording();
+
+      if (audioBlob) {
+        try {
+          const formData = new FormData();
+          formData.append("audio", audioBlob, "recording.webm");
+
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+              },
+              body: formData,
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error("Erro ao transcrever áudio");
+          }
+
+          const { text } = await response.json();
+          setMessage(text);
+
+          toast({
+            title: "Áudio transcrito",
+            description: "Sua mensagem foi convertida em texto",
+          });
+        } catch (error) {
+          console.error("Transcription error:", error);
+          toast({
+            title: "Erro na transcrição",
+            description: "Não foi possível transcrever o áudio",
+            variant: "destructive",
+          });
+        }
+      }
+      setIsTranscribing(false);
+    } else {
+      await startRecording();
+      if (recordError) {
+        toast({
+          title: "Erro ao gravar",
+          description: recordError,
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="p-4 border-t border-border bg-card/50 backdrop-blur-sm">
       <div className="max-w-4xl mx-auto space-y-2">
@@ -146,13 +203,13 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
           </Button>
           <Button
             type="button"
-            variant="outline"
+            variant={isRecording ? "destructive" : "outline"}
             size="icon"
-            onClick={() => audioInputRef.current?.click()}
-            disabled={disabled}
+            onClick={handleMicClick}
+            disabled={disabled || isTranscribing}
             className="self-end"
           >
-            <Mic className="w-4 h-4" />
+            {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
           </Button>
           <Textarea
             value={message}
@@ -164,7 +221,7 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
           />
           <Button
             type="submit"
-            disabled={(!message.trim() && selectedFiles.length === 0) || disabled}
+            disabled={(!message.trim() && selectedFiles.length === 0) || disabled || isTranscribing}
             className="self-end bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity"
           >
             <Send className="w-4 h-4" />

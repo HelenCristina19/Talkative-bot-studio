@@ -1,22 +1,31 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';",
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "X-XSS-Protection": "1; mode=block",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-serve(async (req) => {
+const needsWebSearch = (message: string): boolean => {
+  const searchKeywords = [
+    "busca", "pesquisa", "procura", "encontre", "busque", "pesquise",
+    "qual é", "qual e", "quais são", "quais sao",
+    "notícias", "noticias", "atual", "recente", "hoje", "agora",
+    "preço", "preco", "valor", "quanto custa",
+    "onde", "quando", "como funciona",
+    "última", "ultimo", "mais recente"
+  ];
+
+  const lowerMessage = message.toLowerCase();
+  return searchKeywords.some(keyword => lowerMessage.includes(keyword));
+};
+
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { messages } = await req.json();
     
-    // Validação de input
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: "Formato de mensagens inválido" }), {
         status: 400,
@@ -24,7 +33,6 @@ serve(async (req) => {
       });
     }
 
-    // Limitar número de mensagens
     if (messages.length > 100) {
       return new Response(JSON.stringify({ error: "Número de mensagens excede o limite" }), {
         status: 400,
@@ -32,7 +40,6 @@ serve(async (req) => {
       });
     }
 
-    // Validar cada mensagem
     for (const msg of messages) {
       if (!msg.role || !msg.content) {
         return new Response(JSON.stringify({ error: "Mensagem inválida" }), {
@@ -41,7 +48,6 @@ serve(async (req) => {
         });
       }
       
-      // Limitar tamanho do conteúdo
       if (msg.content.length > 10000) {
         return new Response(JSON.stringify({ error: "Mensagem muito longa" }), {
           status: 400,
@@ -53,6 +59,41 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
+    let systemMessage = "Você é um assistente virtual prestativo e amigável. Responda de forma clara, concisa e útil em português.";
+    const lastUserMessage = messages[messages.length - 1];
+
+    if (lastUserMessage && needsWebSearch(lastUserMessage.content)) {
+      try {
+        const searchResponse = await fetch(
+          `${Deno.env.get("SUPABASE_URL")}/functions/v1/web-search`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ query: lastUserMessage.content }),
+          }
+        );
+
+        if (searchResponse.ok) {
+          const searchResults = await searchResponse.json();
+          if (searchResults.results && searchResults.results.length > 0) {
+            const resultsText = searchResults.results
+              .slice(0, 5)
+              .map((r: { title: string; snippet: string; url: string }) =>
+                `Título: ${r.title}\nConteúdo: ${r.snippet}\nURL: ${r.url}`
+              )
+              .join("\n\n");
+
+            systemMessage = `Você é um assistente virtual prestativo e amigável. Use as seguintes informações da web para responder a pergunta do usuário de forma precisa e atualizada. Sempre cite as fontes quando usar informações específicas.\n\nResultados da busca:\n${resultsText}`;
+          }
+        }
+      } catch (searchError) {
+        console.error("Error searching web:", searchError);
+      }
+    }
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -62,7 +103,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "Você é um assistente virtual prestativo e amigável. Responda de forma clara, concisa e útil em português." },
+          { role: "system", content: systemMessage },
           ...messages,
         ],
         stream: true,
