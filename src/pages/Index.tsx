@@ -7,6 +7,7 @@ import { Sparkles } from "lucide-react";
 interface Message {
   role: "user" | "assistant";
   content: string;
+  files?: { url: string; type: string; name: string }[];
 }
 
 const Index = () => {
@@ -23,8 +24,20 @@ const Index = () => {
     scrollToBottom();
   }, [messages]);
 
-  const sendMessage = async (input: string) => {
-    const userMsg: Message = { role: "user", content: input };
+  const sendMessage = async (input: string, files?: File[]) => {
+    const fileData = files ? await Promise.all(
+      files.map(async (file) => ({
+        url: URL.createObjectURL(file),
+        type: file.type,
+        name: file.name,
+      }))
+    ) : undefined;
+    
+    const userMsg: Message = { 
+      role: "user", 
+      content: input,
+      files: fileData 
+    };
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
@@ -170,7 +183,7 @@ const Index = () => {
             </div>
           )}
           {messages.map((msg, idx) => (
-            <ChatMessage key={idx} role={msg.role} content={msg.content} />
+            <ChatMessage key={idx} role={msg.role} content={msg.content} files={msg.files} />
           ))}
           {isLoading && messages[messages.length - 1]?.role === "user" && (
             <div className="flex gap-3 animate-fade-in">

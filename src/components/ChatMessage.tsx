@@ -3,9 +3,10 @@ import { Bot, User } from "lucide-react";
 interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
+  files?: { url: string; type: string; name: string }[];
 }
 
-const ChatMessage = ({ role, content }: ChatMessageProps) => {
+const ChatMessage = ({ role, content, files }: ChatMessageProps) => {
   const isUser = role === "user";
 
   return (
@@ -22,7 +23,23 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
             : "bg-card border border-border"
         }`}
       >
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+        {files && files.length > 0 && (
+          <div className="mb-2 space-y-2">
+            {files.map((file, index) => (
+              <div key={index}>
+                {file.type.startsWith("image/") && (
+                  <img src={file.url} alt={file.name} className="rounded-lg max-w-full h-auto" />
+                )}
+                {file.type.startsWith("audio/") && (
+                  <audio controls className="w-full">
+                    <source src={file.url} type={file.type} />
+                  </audio>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {content && <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>}
       </div>
       {isUser && (
         <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center">
