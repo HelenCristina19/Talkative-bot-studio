@@ -64,6 +64,11 @@ const Index = () => {
     try {
       const hasImages = fileData?.some(file => file.type.startsWith('image/'));
 
+      const messagesToSend = [...messages, {
+        role: userMsg.role,
+        content: userMsg.content
+      }];
+
       const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
       const resp = await fetch(CHAT_URL, {
         method: "POST",
@@ -72,7 +77,7 @@ const Index = () => {
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
         body: JSON.stringify({
-          messages: [...messages, userMsg],
+          messages: messagesToSend,
           hasImages
         }),
       });
