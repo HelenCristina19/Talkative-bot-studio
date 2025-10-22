@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages } = await req.json();
+    const { messages, hasImages } = await req.json();
     
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: "Formato de mensagens inválido" }), {
@@ -62,7 +62,9 @@ Deno.serve(async (req) => {
     let systemMessage = "Você é um assistente virtual prestativo e amigável. Responda de forma clara, concisa e útil em português.";
     const lastUserMessage = messages[messages.length - 1];
 
-    if (lastUserMessage && needsWebSearch(lastUserMessage.content)) {
+    const shouldSearch = (lastUserMessage && needsWebSearch(lastUserMessage.content)) || hasImages;
+
+    if (shouldSearch) {
       try {
         const searchResponse = await fetch(
           `${Deno.env.get("SUPABASE_URL")}/functions/v1/web-search`,
@@ -86,7 +88,8 @@ Deno.serve(async (req) => {
               )
               .join("\n\n");
 
-            systemMessage = `Você é um assistente virtual prestativo e amigável. Use as seguintes informações da web para responder a pergunta do usuário de forma precisa e atualizada. Sempre cite as fontes quando usar informações específicas.\n\nResultados da busca:\n${resultsText}`;
+            const imageContext = hasImages ? "O usuário enviou uma imagem junto com a pergunta. " : "";
+            systemMessage = `Você é um assistente virtual prestativo e amigável. ${imageContext}Use as seguintes informações da web para responder a pergunta do usuário de forma precisa e atualizada. Sempre cite as fontes quando usar informações específicas.\n\nResultados da busca:\n${resultsText}`;
           }
         }
       } catch (searchError) {
