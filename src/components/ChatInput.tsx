@@ -2,6 +2,16 @@ import { useState, useRef } from "react";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { Send, Image, Mic } from "lucide-react";
+import { z } from "zod";
+import { useToast } from "@/hooks/use-toast";
+
+const messageSchema = z.object({
+  message: z.string().trim().max(5000, "Mensagem muito longa (máximo 5000 caracteres)"),
+});
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
+const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg", "audio/webm"];
 
 interface ChatInputProps {
   onSend: (message: string, files?: File[]) => void;
@@ -13,19 +23,67 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const validateFile = (file: File, allowedTypes: string[]): boolean => {
+    if (file.size > MAX_FILE_SIZE) {
+      toast({
+        title: "Arquivo muito grande",
+        description: `${file.name} excede o tamanho máximo de 10MB`,
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: "Tipo de arquivo não permitido",
+        description: `${file.name} não é um tipo de arquivo válido`,
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    return true;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if ((message.trim() || selectedFiles.length > 0) && !disabled) {
-      onSend(message, selectedFiles);
+    
+    if (disabled) return;
+
+    // Validar mensagem
+    const validation = messageSchema.safeParse({ message });
+    if (!validation.success) {
+      toast({
+        title: "Erro na mensagem",
+        description: validation.error.errors[0].message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if ((message.trim() || selectedFiles.length > 0)) {
+      onSend(message.trim(), selectedFiles);
       setMessage("");
       setSelectedFiles([]);
     }
   };
 
-  const handleFileSelect = (files: FileList | null) => {
-    if (files) {
-      setSelectedFiles(prev => [...prev, ...Array.from(files)]);
+  const handleFileSelect = (files: FileList | null, type: "image" | "audio") => {
+    if (!files) return;
+
+    const allowedTypes = type === "image" ? ALLOWED_IMAGE_TYPES : ALLOWED_AUDIO_TYPES;
+    const validFiles: File[] = [];
+
+    Array.from(files).forEach(file => {
+      if (validateFile(file, allowedTypes)) {
+        validFiles.push(file);
+      }
+    });
+
+    if (validFiles.length > 0) {
+      setSelectedFiles(prev => [...prev, ...validFiles]);
     }
   };
 
@@ -63,17 +121,17 @@ const ChatInput = ({ onSend, disabled }: ChatInputProps) => {
           <input
             ref={imageInputRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
             multiple
-            onChange={(e) => handleFileSelect(e.target.files)}
+            onChange={(e) => handleFileSelect(e.target.files, "image")}
             className="hidden"
           />
           <input
             ref={audioInputRef}
             type="file"
-            accept="audio/*"
+            accept="audio/mpeg,audio/mp3,audio/wav,audio/ogg,audio/webm"
             multiple
-            onChange={(e) => handleFileSelect(e.target.files)}
+            onChange={(e) => handleFileSelect(e.target.files, "audio")}
             className="hidden"
           />
           <Button

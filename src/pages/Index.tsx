@@ -3,6 +3,7 @@ import { useToast } from "@/hooks/use-toast";
 import ChatMessage from "@/components/ChatMessage";
 import ChatInput from "@/components/ChatInput";
 import { Sparkles } from "lucide-react";
+import { sanitizeText } from "@/utils/sanitize";
 
 interface Message {
   role: "user" | "assistant";
@@ -25,6 +26,13 @@ const Index = () => {
   }, [messages]);
 
   const sendMessage = async (input: string, files?: File[]) => {
+    // Sanitizar input do usuário
+    const sanitizedInput = sanitizeText(input);
+    
+    if (!sanitizedInput && (!files || files.length === 0)) {
+      return;
+    }
+
     const fileData = files ? await Promise.all(
       files.map(async (file) => ({
         url: URL.createObjectURL(file),
@@ -35,7 +43,7 @@ const Index = () => {
     
     const userMsg: Message = { 
       role: "user", 
-      content: input,
+      content: sanitizedInput,
       files: fileData 
     };
     setMessages((prev) => [...prev, userMsg]);
